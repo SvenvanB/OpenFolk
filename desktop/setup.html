@@ -28,6 +28,11 @@
     button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
     .error { color: var(--error); margin: 10px 0 0; text-align: left; min-height: 1.5em; overflow-wrap: anywhere; }
     small { display: block; margin-top: 16px; color: var(--muted); text-align: center; }
+    .head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .badge { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+    .where { color: var(--text); font-weight: 600; margin-bottom: 14px; }
+    .warn { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--error); background: rgba(241, 92, 109, .12); color: var(--text); font-size: 13px; text-align: left; }
+    #relay-confirm button { margin-top: 8px; }
     [hidden] { display: none !important; }
 </style>
 </head>
@@ -39,18 +44,26 @@
     <p class="error" id="failed" hidden></p>
     <div id="choice">
         <p data-i18n="setupQuestion">Where should your bots run?</p>
+        <p class="where" data-i18n="setupWhere">On the computer where your bots should work, usually B or C.</p>
         <section class="option">
-            <h2 data-i18n="setupRelay">I already have an OpenFolk server</h2>
+            <div class="head"><span class="badge">A</span><h2 data-i18n="setupRelay">I already have an OpenFolk server</h2></div>
             <p class="hint" data-i18n="setupRelayHint">Your bots keep running on your machines.</p>
+            <p class="warn" data-i18n="setupRelayWarn">This app then starts no backend on this computer, so bots that run here through the app are offline.</p>
             <form id="form">
                 <label for="url" data-i18n="setupLabel">Server URL</label>
                 <input id="url" type="text" placeholder="https://openfolk.example.com" autocomplete="url" spellcheck="false">
                 <p class="error" id="error"></p>
                 <button type="submit" data-i18n="setupConnect">Connect</button>
             </form>
+            <!-- Asked before this computer stops running bots of its own -->
+            <div id="relay-confirm" hidden>
+                <p class="warn" data-i18n="setupRelayConfirmText">Connect to this server? The app starts no backend here, so no bots run on this computer.</p>
+                <button type="button" id="relay-confirm-yes" data-i18n="setupRelayConfirmYes">Yes, no bots run on this computer</button>
+                <button type="button" class="secondary" id="relay-confirm-no" data-i18n="setupRelayConfirmNo">Back</button>
+            </div>
         </section>
         <section class="option">
-            <h2 data-i18n="setupJoinTitle">Connect this computer to my server</h2>
+            <div class="head"><span class="badge">B</span><h2 data-i18n="setupJoinTitle">Connect this computer to my server</h2></div>
             <p class="hint" data-i18n="setupJoinHint">Bots run on this computer too.</p>
             <form id="join-form">
                 <label for="join" data-i18n="setupJoinLabel">Link from “Add machine”</label>
@@ -60,7 +73,7 @@
             </form>
         </section>
         <section class="option">
-            <h2 data-i18n="setupLocalTitle">New to OpenFolk, without a server</h2>
+            <div class="head"><span class="badge">C</span><h2 data-i18n="setupLocalTitle">New to OpenFolk, without a server</h2></div>
             <p class="hint" data-i18n="setupLocalHint">The app runs a backend of its own.</p>
             <p class="hint"><span data-i18n="setupPhoneHint">For your phone, OpenFolk needs a server of its own:</span>
                 <a href="https://github.com/OpenFolk/OpenFolk/blob/main/docs/running.md" target="_blank" rel="noopener" data-i18n="setupPhoneLink">how to set it up</a></p>

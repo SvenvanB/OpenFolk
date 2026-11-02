@@ -16,7 +16,8 @@ lives in the tray, on the Mac in the Dock and the menu bar; everything else is t
     the browser on another device, needs a relay on a server (`../docs/running.md`, linked from the setup page).
   - **I already have an OpenFolk server:** the app loads the web app from that relay, like the browser, and needs no
     backend of its own. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one
-    start.
+    start. The setup page letters the three ways A to C, warns here that this app then starts no backend on this
+    computer, and asks once more ("Yes, no bots run on this computer") unless the app already uses this way.
   - **Connect this computer to my server:** the link from "Add machine" (settings of the app on a device that is
     signed in) joins this computer to that relay: `../local/tools/join.mjs` writes the relay, a token of this
     computer's own and the end-to-end key into the profile's `.env`, and the app runs the backend as "on this
