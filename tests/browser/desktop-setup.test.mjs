@@ -26,8 +26,10 @@ export default async function ({ check }) {
         used.filter((k) => !en.has(k) || !de.has(k)));
 
     const texts = fs.readFileSync(path.join(ROOT, 'desktop', 'main.js'), 'utf8').split('\n');
-    const stale = texts.filter((l) => /setup\w+: /.test(l) && /\b(use|nimm stattdessen) [ABC]\b|\b[ABC] (or|oder) [ABC]\b|\bA, B/.test(l));
-    check('setup page: no text points at the old letters', stale.length === 0, stale);
+    const stale = texts.filter((l) => /setup\w+: /.test(l) && /\b(use|nimm stattdessen|usually|meist) [123]\b|\b[123] (or|oder) [123]\b/.test(l));
+    check('setup page: the texts point at letters, not at numbers', stale.length === 0, stale);
+    const all = texts.join('\n');
+    check('setup page: the texts name the ways A, B and C', /usually A or B/.test(all) && /use C instead/.test(all) && /meist A oder B/.test(all) && /nimm stattdessen C/.test(all));
     const serverWords = texts.filter((l) => /^\s+(setup\w+|https|unreachable|too_old): /.test(l) && /\b[Ss]erver\b/.test(l.replace(/Relay-Server|[Rr]elay server|“[^”]*”|„[^“]*“/g, "")));
     check('setup page: where the relay is meant the texts say relay server', serverWords.length === 0, serverWords);
 
@@ -54,9 +56,9 @@ export default async function ({ check }) {
         let s = await open('');
         const p = s.page;
         const shown = (sel) => p.isVisible(sel);
-        check('setup page: says which way fits where bots should work', (await p.textContent('.where')).includes('1 or 2'));
+        check('setup page: says which way fits where bots should work', (await p.textContent('.where')).includes('A or B'));
         const badges = await p.$$eval('.option .badge', (n) => n.map((x) => x.textContent));
-        check('setup page: the three ways are numbered 1, 2, 3', badges.join() === '1,2,3', badges);
+        check('setup page: the three ways are lettered A, B, C', badges.join() === 'A,B,C', badges);
         const order = await p.$$eval('.option', (n) => n.map((x) => (x.querySelector('#local') ? 'local' : x.querySelector('#join-form') ? 'join' : x.querySelector('#form') ? 'relay' : '?')));
         check('setup page: order is this computer, this computer plus relay server, display only', order.join() === 'local,join,relay', order);
 
@@ -67,14 +69,19 @@ export default async function ({ check }) {
         check('setup page: unfolded it explains bot, backend and relay server', (await p.isVisible('.terms dl')) && terms.join() === 'Bot,Backend,Relay server', terms);
         await p.click('.terms summary');
 
-        // By the width of the window: side by side when wide, one below the other when narrow
-        const tops = () => p.$$eval('.option', (n) => n.map((x) => { const r = x.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }));
-        await p.setViewportSize({ width: 1200, height: 800 });
+        const fills = await p.$$eval('.option > button, .option form > button', (n) => n.map((x) => getComputedStyle(x).backgroundColor !== 'rgba(0, 0, 0, 0)'));
+        check('setup page: only A, "Start on this computer", has the filled button; B and C are outlined', fills.join() === 'true,false,false', fills);
+
+        // Alternatives, not steps: always one below the other, each as wide as the page allows (at most 820 px)
+        const tops = () => p.$$eval('.option', (n) => n.map((x) => { const r = x.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width) }; }));
+        await p.setViewportSize({ width: 1600, height: 900 });
         let boxes = await tops();
-        check('setup page: in a wide window the three ways stand side by side', boxes.every((b) => b.y === boxes[0].y) && new Set(boxes.map((b) => b.x)).size === 3, boxes);
+        const page = await p.$eval('main', (n) => Math.round(n.getBoundingClientRect().width));
+        check('setup page: in a wide window the ways stand one below the other, not side by side', boxes.every((b) => b.x === boxes[0].x) && new Set(boxes.map((b) => b.y)).size === 3, boxes);
+        check('setup page: every way uses the full width of the page, which stops at 820 px', page === 820 && boxes.every((b) => b.width === boxes[0].width && b.width >= page - 2 * 28 - 1), { page, boxes });
         await p.setViewportSize({ width: 520, height: 900 });
         boxes = await tops();
-        check('setup page: in a narrow window they stand one below the other', boxes.every((b) => b.x === boxes[0].x) && new Set(boxes.map((b) => b.y)).size === 3, boxes);
+        check('setup page: in a narrow window they stand one below the other as well', boxes.every((b) => b.x === boxes[0].x) && new Set(boxes.map((b) => b.y)).size === 3, boxes);
         check('setup page: nothing sticks out sideways when narrow', await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
         await p.setViewportSize({ width: 1280, height: 720 });
         check('setup page: the server way warns that no backend runs here', await shown('#form') && (await p.textContent('.option .warn')).includes('no backend on this computer'));
