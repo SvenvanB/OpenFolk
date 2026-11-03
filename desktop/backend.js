@@ -30,6 +30,25 @@ function profileEnv() {
     return values;
 }
 
+/**
+ * Writes KEY=value into the profile's .env (replaces the line, appends otherwise, like local/tools/env.mjs); an empty
+ * value removes the line, so the backend's default applies again. A value dotenv would cut short (" #") is quoted.
+ */
+function setProfileEnv(key, value) {
+    let text = '';
+    try { text = fs.readFileSync(envFile(), 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    const line = new RegExp('^' + key + '=.*$', 'm');
+    const shown = /(^|\s)#|^\s|\s$/.test(value) ? '"' + value + '"' : value;
+    if (!value) text = text.replace(new RegExp('^' + key + '=.*(\r?\n|$)', 'm'), '');
+    else if (line.test(text)) text = text.replace(line, () => key + '=' + shown);
+    else text += (text && !text.endsWith('\n') ? '\n' : '') + key + '=' + shown + '\n';
+    fs.mkdirSync(path.dirname(envFile()), { recursive: true });
+    fs.writeFileSync(envFile(), text);
+}
+
+/** The folders of ALLOWED_ROOTS in the profile's .env (";" between them); empty when the backend's default applies. */
+const profileRoots = () => (profileEnv().ALLOWED_ROOTS || '').split(';').map((p) => p.trim()).filter(Boolean);
+
 /** The relay of RELAY_URL in the profile's .env as an http(s) address ending with "/"; '' for the embedded one. */
 function remoteUrl() {
     const raw = (profileEnv().RELAY_URL || '').trim();
@@ -181,6 +200,21 @@ class Backend {
         return this.exited;
     }
 
+    /**
+     * Asks the backend to end once no bot is working (like stop()) but lets the app start it again, so it reads the
+     * profile's .env anew. Resolves 'restarted' when it ended within `ms`, otherwise 'waiting': a bot is still working
+     * (or the scheduled task runs the backend) and the restart follows by itself as soon as nothing works.
+     */
+    restartWhenIdle(ms = 12_000) {
+        if (!this.child && !this.useTask) {
+            this.start();
+            return Promise.resolve('restarted');
+        }
+        fs.writeFileSync(path.join(dataDir(), 'restart.request'), JSON.stringify({ reason: 'desktop app: allowed folders changed', since: new Date().toISOString() }));
+        if (this.useTask || !this.exited) return Promise.resolve('waiting');
+        return Promise.race([this.exited.then(() => 'restarted'), new Promise((resolve) => setTimeout(() => resolve('waiting'), ms))]);
+    }
+
     /** Ends the backend and the sessions it started at once. */
     kill() {
         this.stopping = true;
@@ -218,4 +252,4 @@ function guardQuit(getBackend, ask) {
     });
 }
 
-module.exports = { Backend, freePort, guardQuit, dataDir, joinServer, remoteUrl, root };
+module.exports = { Backend, freePort, guardQuit, dataDir, joinServer, profileRoots, remoteUrl, root, setProfileEnv };

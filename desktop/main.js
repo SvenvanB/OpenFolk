@@ -7,14 +7,16 @@
 
 const { app, BrowserWindow, Tray, Menu, shell, ipcMain, nativeImage, dialog, session } = require('electron');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { Backend, freePort, guardQuit, joinServer, remoteUrl, root } = require('./backend.js');
+const { Backend, freePort, guardQuit, joinServer, profileRoots, remoteUrl, root, setProfileEnv } = require('./backend.js');
 const task = require('./task.js');
 const { watchHandovers } = require('./handover.js');
 const { startUpdates, updateMenuItems } = require('./updater.js');
 
 const CONFIG = () => path.join(app.getPath('userData'), 'config.json');
 const SETUP = path.join(__dirname, 'setup.html');
+const FOLDERS = path.join(__dirname, 'folders.html');
 const MAC = process.platform === 'darwin';
 
 /** Texts of the app itself (menus, tray, setup page); the web app from the relay translates itself. */
@@ -22,6 +24,22 @@ const TEXTS = {
     en: {
         open: 'Open OpenFolk',
         changeAddress: 'Change setup …',
+        foldersMenu: 'Allowed folders …',
+        foldersTitle: 'Allowed folders',
+        foldersIntro: 'Bots only work in these folders and below them. A bot with a folder outside is refused when it is saved.',
+        foldersDefault: 'No folder chosen: bots may work in your user folder ({home}).',
+        foldersAdd: 'Add folder …',
+        foldersRemove: 'Remove',
+        foldersSave: 'Save',
+        foldersClose: 'Close',
+        foldersPickTitle: 'Choose a folder for bots',
+        foldersEnvWarn: 'The environment variable ALLOWED_ROOTS is set on this computer ({value}) and takes precedence over this list. Remove the variable (Windows: system settings, environment variables) and restart the app for the list to apply.',
+        foldersSaved: 'Saved. The backend restarts now.',
+        foldersWaiting: 'Saved. A bot is still working: the backend restarts as soon as no bot is working, until then the old folders apply.',
+        foldersNotFolder: '{folder} is not a folder that exists.',
+        foldersBadChars: '{folder} cannot be used: a folder name must not contain “;”.',
+        foldersSetupSummary: 'Folders the bots may work in (optional)',
+        foldersSetupHint: 'Without a choice the bots may work in your user folder. You can change this later in the menu under “Allowed folders …”.',
         pairAgain: 'Sign this window in again',
         setupRelay: 'Display only: connect to an existing relay server',
         setupRelayHint: 'For a computer that only shows your bots, like your phone or browser does: this window is just the interface to a relay server you already have.',
@@ -117,6 +135,22 @@ const TEXTS = {
     de: {
         open: 'OpenFolk öffnen',
         changeAddress: 'Einrichtung ändern …',
+        foldersMenu: 'Freigegebene Ordner …',
+        foldersTitle: 'Freigegebene Ordner',
+        foldersIntro: 'Bots arbeiten nur in diesen Ordnern und darunter. Ein Bot mit einem Ordner außerhalb wird beim Speichern abgelehnt.',
+        foldersDefault: 'Kein Ordner gewählt: Bots dürfen in deinem Benutzerordner arbeiten ({home}).',
+        foldersAdd: 'Ordner hinzufügen …',
+        foldersRemove: 'Entfernen',
+        foldersSave: 'Speichern',
+        foldersClose: 'Schließen',
+        foldersPickTitle: 'Ordner für Bots wählen',
+        foldersEnvWarn: 'Auf diesem Rechner ist die Umgebungsvariable ALLOWED_ROOTS gesetzt ({value}) und geht dieser Liste vor. Entferne die Variable (Windows: Systemeinstellungen, Umgebungsvariablen) und starte die App neu, damit die Liste gilt.',
+        foldersSaved: 'Gespeichert. Das Backend startet jetzt neu.',
+        foldersWaiting: 'Gespeichert. Ein Bot arbeitet noch: Das Backend startet neu, sobald kein Bot mehr arbeitet, bis dahin gelten die alten Ordner.',
+        foldersNotFolder: '{folder} ist kein vorhandener Ordner.',
+        foldersBadChars: '{folder} geht nicht: Ein Ordnername darf kein „;“ enthalten.',
+        foldersSetupSummary: 'Ordner, in denen Bots arbeiten dürfen (optional)',
+        foldersSetupHint: 'Ohne Auswahl dürfen die Bots in deinem Benutzerordner arbeiten. Das lässt sich später im Menü unter „Freigegebene Ordner …“ ändern.',
         pairAgain: 'Dieses Fenster neu anmelden',
         setupRelay: 'Nur anzeigen: mit einem bestehenden Relay-Server verbinden',
         setupRelayHint: 'Für einen Rechner, der deine Bots nur anzeigt, wie Handy oder Browser: Dieses Fenster ist nur die Oberfläche zu einem Relay-Server, den du schon hast.',
@@ -391,6 +425,46 @@ function show() {
     win.focus();
 }
 
+/** The small window for the folders bots may work in; the main window stays where it is. */
+let foldersWin = null;
+function openFolders() {
+    if (foldersWin) {
+        foldersWin.show();
+        foldersWin.focus();
+        return;
+    }
+    foldersWin = new BrowserWindow({
+        width: 620, height: 560, minWidth: 420, minHeight: 420, parent: win || undefined,
+        title: t('foldersTitle'), icon: path.join(__dirname, 'build', 'icon.png'), backgroundColor: '#111b21', autoHideMenuBar: true,
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    foldersWin.removeMenu();
+    foldersWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    foldersWin.loadFile(FOLDERS);
+    foldersWin.on('closed', () => { foldersWin = null; });
+}
+
+/** Only the backend of "on this computer" has folders to choose; with a server in the browser's place they belong to its machines. */
+const foldersItem = () => (config.mode === 'local' ? [{ label: t('foldersMenu'), click: openFolders }] : []);
+
+/**
+ * The folders for ALLOWED_ROOTS: existing folders, no ";" (it separates them), no duplicates.
+ * @returns {{ roots: string[] } | { error: string }}
+ */
+function checkRoots(list) {
+    const roots = [];
+    for (const raw of Array.isArray(list) ? list : []) {
+        const folder = String(raw || '').trim();
+        if (!folder) continue;
+        if (folder.includes(';')) return { error: t('foldersBadChars').replace('{folder}', folder) };
+        let isDir = false;
+        try { isDir = path.isAbsolute(folder) && fs.statSync(folder).isDirectory(); } catch { /* not there */ }
+        if (!isDir) return { error: t('foldersNotFolder').replace('{folder}', folder) };
+        if (!roots.includes(folder)) roots.push(folder);
+    }
+    return { roots };
+}
+
 function changeAddress() {
     show();
     win.loadFile(SETUP, { query: { url: config.url || '', choose: '1' } });
@@ -439,6 +513,7 @@ async function switchTask(on) {
 const trayMenu = () => Menu.buildFromTemplate([
     { label: t('open'), click: show },
     { label: t('changeAddress'), click: changeAddress },
+    ...foldersItem(),
     ...(config.mode === 'local' ? [{ label: t('pairAgain'), click: () => { show(); void pairAgain(); } }] : []),
     { type: 'separator' },
     { label: t(process.platform === 'win32' ? 'startWithWindows' : 'startAtLogin'), type: 'checkbox', checked: startsAtLogin(), click: (m) => setStartAtLogin(m.checked) },
@@ -483,6 +558,7 @@ function createMacMenu() {
                 ...updateMenuItems(),
                 { type: 'separator' },
                 { label: t('changeAddress'), click: changeAddress },
+                ...foldersItem(),
                 { type: 'separator' },
                 { label: t('startAtLogin'), type: 'checkbox', checked: startsAtLogin(), click: (m) => setStartAtLogin(m.checked) },
                 { type: 'separator' },
@@ -527,6 +603,7 @@ function createMenu() {
             label: t('file'),
             submenu: [
                 { label: t('changeAddress'), click: changeAddress },
+                ...foldersItem(),
                 ...(taskOffered() ? [{ type: 'separator' }, ...taskItem()] : []),
                 { type: 'separator' },
                 { label: t('quit'), accelerator: 'Ctrl+Q', click: quit },
@@ -591,8 +668,14 @@ if (!app.requestSingleInstanceLock()) {
         loadWebApp();
         return { url };
     });
-    ipcMain.handle('choose-local', (e) => {
+    ipcMain.handle('choose-local', (e, folders) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
+        // The folders chosen on the setup page go into the profile's .env before the backend starts
+        if (Array.isArray(folders)) {
+            const checked = checkRoots(folders);
+            if (checked.error) return { error: checked.error };
+            setProfileEnv('ALLOWED_ROOTS', checked.roots.join(';'));
+        }
         config.mode = 'local';
         saveConfig();
         createMenu();
@@ -618,7 +701,22 @@ if (!app.requestSingleInstanceLock()) {
         loadWebApp();
         return { machine: r.machine };
     });
-    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('folders-info', (e) => (!fromSetup(e) ? {} : { roots: profileRoots(), home: os.homedir(), env: process.env.ALLOWED_ROOTS || '', language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('folders-pick', async (e) => {
+        if (!fromSetup(e)) return '';
+        const owner = BrowserWindow.fromWebContents(e.sender) || undefined;
+        const r = await dialog.showOpenDialog(owner, { title: t('foldersPickTitle'), properties: ['openDirectory'] });
+        return r.canceled ? '' : r.filePaths[0] || '';
+    });
+    // Saves into the profile's .env; the running backend picks it up by a restart, which waits for the bots
+    ipcMain.handle('folders-save', async (e, list) => {
+        if (!fromSetup(e)) return { error: 'not allowed' };
+        const checked = checkRoots(list);
+        if (checked.error) return { error: checked.error };
+        setProfileEnv('ALLOWED_ROOTS', checked.roots.join(';'));
+        return { state: config.mode === 'local' && backend ? await backend.restartWhenIdle() : 'saved' };
+    });
+    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', roots: profileRoots(), home: os.homedir(), envRoots: process.env.ALLOWED_ROOTS || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
 
     // A click on the Dock icon brings the hidden window back (macOS only)
     app.on('activate', show);
