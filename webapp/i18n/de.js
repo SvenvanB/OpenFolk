@@ -76,6 +76,8 @@ registerDictionary('de', {
     'editor.repoThere': 'Das Repository liegt auf {machine} schon in {folder}.',
     'editor.folderOrRepo': 'Gib einen Ordner oder ein Repository an.',
     'editor.requiredNote': '* Pflichtfeld. Für den Arbeitsordner genügt ein Ordner oder ein Repository.',
+    'editor.folderNotAllowed': 'Dieser Ordner ist nicht freigegeben: {folder}',
+    'editor.allowedFolders': 'Freigegebene Ordner:',
     'editor.folderNotAllowedHint': 'Bots arbeiten nur in den Ordnern, die der Rechner freigibt (oben genannt). Weitere gibst du auf diesem Rechner mit ALLOWED_ROOTS frei, mehrere Pfade mit ";" getrennt, danach Backend bzw. App neu starten.\nDesktop-App unter Windows: eine Zeile ALLOWED_ROOTS=C:\\Projekte;D:\\Arbeit in %APPDATA%\\OpenFolk\\.env eintragen oder als Benutzer-Umgebungsvariable setzen.\nDocker: die Bots arbeiten in /work, dem Host-Ordner WORK_DIR aus der .env neben der Compose-Datei; setze ihn auf deinen Ordner.',
     'editor.repoInvalid': 'Das ist keine Repository-Adresse (https://…, ssh://… oder git@host:team/repo).',
     'editor.cloning': 'Klont …',

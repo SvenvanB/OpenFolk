@@ -781,6 +781,7 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .swatch:hover { border-color: var(--accent); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .swatch { background: var(--bubble-me-d); } }
 :root[data-theme="dark"] .swatch { background: var(--bubble-me-d); }
+.error-roots { display: block; margin-top: 6px; white-space: pre-line; }
 .error-hint { display: block; margin-top: 8px; white-space: pre-line; color: var(--muted); font-size: 12.5px; }
 .dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .dialog input:not([type=checkbox]), .dialog select, .dialog textarea {
