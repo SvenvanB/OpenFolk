@@ -14,6 +14,8 @@ export const platformKind = isNative ? cap.getPlatform() : /\bElectron\//.test(n
  * this app has the menu "Allowed folders …"; a browser or a display-only window has none.
  */
 export const desktopLocal = platformKind === 'desktop' && /OpenFolkLocal/.test(navigator.userAgent);
+/** The desktop app's version: Electron puts "OpenFolk/<version>" into its user agent. '' in the browser and the mobile apps. */
+export const desktopVersion = platformKind === 'desktop' ? /\bOpenFolk\/([\w.+-]+)/.exec(navigator.userAgent)?.[1] ?? '' : '';
 // For CSS, e.g. the desktop apps fill the whole window instead of capping the layout width
 document.documentElement.dataset.platform = platformKind;
 
