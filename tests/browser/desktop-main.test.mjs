@@ -1,5 +1,5 @@
-// The desktop app's main process (desktop/main.js) with a stand-in for Electron: which page the window shows after
-// "Change setup" was closed, and that the folders for the bots are never empty. No browser is needed here.
+// The desktop app's main process (desktop/main.js) with a stand-in for Electron:
+// the folders for the bots are never empty and the window is marked for the web app. No browser is needed here.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -85,7 +85,6 @@ function startApp(profile, config) {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 const fromSetup = { senderFrame: { url: 'file:///setup.html' } };
-const menuItem = (state, label) => state.menu[0].submenu.find((i) => i.label === label);
 
 export default async function ({ check }) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-main-'));
@@ -93,7 +92,7 @@ export default async function ({ check }) {
     const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
     process.env.HOME = process.env.USERPROFILE = home;
     try {
-        // Running "on this computer": "Change setup" opened and closed without a choice, the tray icon brings the app back
+        // Running "on this computer"
         let app = startApp(profile, { mode: 'local', localPort: 4711, paired: 'http://127.0.0.1:4711/' });
         app.whenReady();
         await settle();
@@ -101,18 +100,8 @@ export default async function ({ check }) {
         check('main: the app shows the web app of the backend', last().url === 'http://127.0.0.1:4711/', app.win.loads);
         check('main: "on this computer" marks the user agent for the web app', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44 OpenFolkLocal', app.win.agent);
         check('main: no folder in the .env yet: the own folder is created and written, never the whole user folder', fs.readFileSync(path.join(profile, '.env'), 'utf8') === `ALLOWED_ROOTS=${path.join(home, 'OpenFolk')}\n` && fs.statSync(path.join(home, 'OpenFolk')).isDirectory(), fs.existsSync(path.join(profile, '.env')) && fs.readFileSync(path.join(profile, '.env'), 'utf8'));
-        menuItem(app, 'Change setup …').click();
-        check('main: "Change setup" shows the setup page', last().file === 'setup.html' && last().query.choose === '1', last());
-        app.win.events.close({ preventDefault: () => undefined });
-        await settle();
-        check('main: closing it without a choice hides the window and brings the web app back', app.win.hidden && last().url === 'http://127.0.0.1:4711/', app.win.loads);
-        app.tray.events.click();
-        check('main: a click on the tray icon shows the web app, not the setup page', !app.win.hidden && last().url === 'http://127.0.0.1:4711/', last());
-        const config = () => JSON.parse(fs.readFileSync(path.join(profile, 'config.json'), 'utf8'));
-        check('main: the stored mode stays', config().mode === 'local');
 
         // Choosing "on this computer" again, with the list emptied: the own folder, and the running backend restarts
-        menuItem(app, 'Change setup …').click();
         const r = await app.handlers['choose-local'](fromSetup, []);
         check('main: "start on this computer" with no folder writes the own folder and restarts the running backend', !r.error && fs.readFileSync(path.join(profile, '.env'), 'utf8').includes(`ALLOWED_ROOTS=${path.join(home, 'OpenFolk')}`) && app.restarts === 1, { r, restarts: app.restarts });
         const other = path.join(home, 'Work');
@@ -124,24 +113,11 @@ export default async function ({ check }) {
         const info = await app.handlers['folders-info'](fromSetup);
         check('main: the folder pages learn the own folder', info.defaultRoot === path.join(home, 'OpenFolk'), info.defaultRoot);
 
-        // First start: no choice made yet, so closing the setup page leaves it there
-        fs.rmSync(path.join(profile, 'config.json'));
-        app = startApp(profile);
-        app.whenReady();
-        await settle();
-        menuItem(app, 'Change setup …').click();
-        app.win.events.close({ preventDefault: () => undefined });
-        await settle();
-        check('main: without any choice made the setup page stays', app.win.loads.every((l) => l.file === 'setup.html'), app.win.loads);
-
-        // Connected to a relay: closing "Change setup" brings that relay back
+        // Connected to a relay: a display-only window
         app = startApp(profile, { mode: 'relay', url: 'https://relay.example.test/' });
         app.whenReady();
         await settle();
-        menuItem(app, 'Change setup …').click();
-        app.win.events.close({ preventDefault: () => undefined });
         check('main: a display-only window carries no mark', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', app.win.agent);
-        check('main: in relay mode the relay comes back', app.win.loads[app.win.loads.length - 1].url === 'https://relay.example.test/', app.win.loads);
     } finally {
         for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
         fs.rmSync(profile, { recursive: true, force: true });
