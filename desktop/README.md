@@ -37,7 +37,9 @@ lives in the tray, on the Mac in the Dock and the menu bar; everything else is t
 - **Profile folder:** `%APPDATA%\OpenFolk` (Windows), `~/.config/OpenFolk` (Linux),
   `~/Library/Application Support/OpenFolk` (macOS). The choice and the address are stored in its `config.json`;
   change them via the tray menu, "File → Change setup" or, on the Mac, "OpenFolk → Change setup".
-- **Allowed folders:** bots only work in the folders of `ALLOWED_ROOTS` (the user folder when it is not set). "Allowed
+- **Allowed folders:** bots only work in the folders of `ALLOWED_ROOTS`. The app never leaves it empty (the backend's
+  own default would be the whole user folder): without a choice it creates `OpenFolk` in the user folder and writes
+  only that. Choosing the user folder or a drive root is allowed, with a warning. "Allowed
   folders …" (tray menu, "File"; on the Mac under "OpenFolk") opens a small window to add and remove them; saving
   writes `ALLOWED_ROOTS` into the profile's `.env` and restarts the backend as soon as no bot is working. The setup
   page offers the same list for "start on this computer". An environment variable `ALLOWED_ROOTS` on the computer

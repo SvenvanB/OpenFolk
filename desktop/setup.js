@@ -21,9 +21,11 @@ let folders = null;
 window.openfolkDesktop.info().then((i) => {
     texts = i.texts;
     currentMode = i.mode;
-    folders = window.mountFolders(document.getElementById('setup-folders'), { roots: i.roots || [], home: i.home || '', env: i.envRoots || '', texts: i.texts });
+    folders = window.mountFolders(document.getElementById('setup-folders'), { roots: i.roots || [], home: i.home || '', defaultRoot: i.defaultRoot || '', env: i.envRoots || '', texts: i.texts });
     document.documentElement.lang = i.language;
     for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = i.texts[el.dataset.i18n] ?? el.textContent;
+    const foldersHint = document.querySelector('[data-i18n="foldersSetupHint"]');
+    foldersHint.textContent = fill(i.texts.foldersSetupHint, { default: i.defaultRoot || '' });
     document.getElementById('info').textContent = fill(i.texts.setupHint, { version: i.version });
     const starting = params.get('starting') === '1';
     document.getElementById('starting').hidden = !starting;

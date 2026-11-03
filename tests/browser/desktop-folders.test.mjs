@@ -74,7 +74,7 @@ export default async function ({ check }) {
         const keys = (from, to) => new Set(main.slice(from, to).flatMap((l) => { const m = /^\s{8}(\w+): /.exec(l); return m ? [m[1]] : []; }));
         const [inEn, inDe] = [keys(en, de), keys(de, main.length)];
         const used = ['folders.html', 'setup.html'].flatMap((n) => [...fs.readFileSync(path.join(ROOT, 'desktop', n), 'utf8').matchAll(/data-i18n="(folders\w+)"/g)].map((m) => m[1]));
-        const own = ['foldersMenu', 'foldersDefault', 'foldersAdd', 'foldersRemove', 'foldersEnvWarn', 'foldersSaved', 'foldersWaiting', 'foldersNotFolder', 'foldersBadChars', 'foldersPickTitle'];
+        const own = ['foldersMenu', 'foldersDefault', 'foldersDefaultTag', 'foldersLastRemoved', 'foldersWide', 'foldersAdd', 'foldersRemove', 'foldersEnvWarn', 'foldersSaved', 'foldersWaiting', 'foldersNotFolder', 'foldersBadChars', 'foldersPickTitle'];
         const missing = [...used, ...own].filter((k) => !inEn.has(k) || !inDe.has(k));
         check('folders: every text exists in English and in German', used.length >= 6 && missing.length === 0, missing);
         const files = fs.readFileSync(path.join(ROOT, 'desktop', 'package.json'), 'utf8');
@@ -83,9 +83,10 @@ export default async function ({ check }) {
         const browser = await chromium.launch();
         try {
             const texts = {
-                foldersTitle: 'Allowed folders', foldersIntro: 'Intro', foldersDefault: 'No folder chosen: your user folder ({home}).', foldersAdd: 'Add folder …', foldersRemove: 'Remove',
+                foldersTitle: 'Allowed folders', foldersIntro: 'Intro', foldersDefault: 'No folder chosen: the own folder {default}, not your whole user folder.', foldersDefaultTag: 'default',
+                foldersLastRemoved: 'The last folder stays: {default} applies.', foldersWide: '{folder} is very wide.', foldersAdd: 'Add folder …', foldersRemove: 'Remove',
                 foldersSave: 'Save', foldersClose: 'Close', foldersSaved: 'Saved.', foldersWaiting: 'Saved, waiting for the bot.', foldersEnvWarn: 'ALLOWED_ROOTS is set ({value}) and wins.',
-                foldersSetupSummary: 'Folders (optional)', foldersSetupHint: 'Hint', setupHint: 'OpenFolk {version}',
+                foldersSetupSummary: 'Folders (optional)', foldersSetupHint: 'Hint {default}', setupHint: 'OpenFolk {version}',
             };
             const open = async (file, info, answers = {}) => {
                 const context = await browser.newContext({ bypassCSP: true });
@@ -110,7 +111,7 @@ export default async function ({ check }) {
             const rows = (p) => p.$$eval('.folder-path', (n) => n.map((x) => x.textContent));
 
             // The window
-            let s = await open('folders.html', { roots: ['C:/Work'], home: 'C:/Users/sven', env: '' }, { pick: 'D:/Projects' });
+            let s = await open('folders.html', { roots: ['C:/Work'], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', env: '' }, { pick: 'D:/Projects' });
             let p = s.p;
             check('folders window: the folders of the .env are listed, no note about the default', (await rows(p)).join() === 'C:/Work' && !(await p.isVisible('.folder-default')) && !(await p.isVisible('.warn')), await rows(p));
             await p.click('.folder-add');
@@ -123,11 +124,27 @@ export default async function ({ check }) {
             await p.waitForFunction(() => document.getElementById('status').textContent !== '');
             check('folders window: "Save" hands over the list, says the backend restarts', JSON.stringify((await s.calls()).filter((c) => c[0] === 'save')) === '[["save",["D:/Projects"]]]' && (await p.textContent('#status')) === 'Saved.', await s.calls());
             await p.click('.folder-list li .folder-remove');
-            check('folders window: without a folder it says which default applies', (await p.isVisible('.folder-default')) && (await p.textContent('.folder-default')).includes('C:/Users/sven'));
+            check('folders window: the last folder is not just deleted: the own folder takes its row, with a note', (await rows(p)).join() === 'C:/Users/sven/OpenFolk' && (await p.isVisible('.folder-standard')) && (await p.textContent('.folder-notes .note')).includes('C:/Users/sven/OpenFolk') && (await p.textContent('.folder-default')).includes('not your whole user folder'), await rows(p));
+            await p.click('#save');
+            await p.waitForFunction(() => window.__calls.filter((c) => c[0] === 'save').length === 2);
+            check('folders window: that row has no "Remove", saving hands over an empty list (the app writes the own folder)', (await p.$$('.folder-standard .folder-remove')).length === 0 && JSON.stringify((await s.calls()).filter((c) => c[0] === 'save')[1]) === '["save",[]]', await s.calls());
             check('folders window: no script errors', s.errors.length === 0, s.errors);
             await s.context.close();
 
-            s = await open('folders.html', { roots: [], home: 'C:/Users/sven', env: 'C:/Everything' }, { save: { state: 'waiting' } });
+            // The user folder or a drive root is allowed, with a clear warning
+            s = await open('folders.html', { roots: ['C:\\Users\\sven\\'], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', env: '' }, { pick: 'D:\\' });
+            p = s.p;
+            check('folders window: the whole user folder (other spelling, trailing slash) is listed with a warning', (await p.$$('.folder-wide')).length === 1 && (await p.textContent('.folder-wide')).includes('C:\\Users\\sven\\'), await rows(p));
+            await p.click('.folder-add');
+            check('folders window: a drive root is warned about as well, the other folders are not', (await p.$$('.folder-wide')).length === 2, await rows(p));
+            await p.click('.folder-list li:first-child .folder-remove');
+            await p.click('.folder-list li:first-child .folder-remove');
+            await p.evaluate(() => { window.__answers.pick = 'C:/Users/sven/Work'; });
+            await p.click('.folder-add');
+            check('folders window: a folder below the user folder is fine, no warning', (await p.$$('.folder-wide')).length === 0 && (await rows(p)).join() === 'C:/Users/sven/Work', await rows(p));
+            await s.context.close();
+
+            s = await open('folders.html', { roots: [], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', env: 'C:/Everything' }, { save: { state: 'waiting' } });
             p = s.p;
             check('folders window: a ALLOWED_ROOTS environment variable is pointed out, with its value', (await p.isVisible('.warn')) && (await p.textContent('.warn')).includes('C:/Everything'));
             await p.click('#save');
@@ -135,16 +152,16 @@ export default async function ({ check }) {
             check('folders window: a bot still works: the note says the restart waits', (await p.textContent('#status')) === 'Saved, waiting for the bot.');
             await s.context.close();
 
-            s = await open('folders.html', { roots: [], home: 'C:/Users/sven', env: '' }, { save: { error: 'C:/x is not a folder that exists.' } });
+            s = await open('folders.html', { roots: [], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', env: '' }, { save: { error: 'C:/x is not a folder that exists.' } });
             await s.p.click('#save');
             await s.p.waitForFunction(() => document.querySelector('#folders .error').textContent !== '');
             check('folders window: a refused list shows the reason and no success', (await s.p.textContent('#folders .error')) === 'C:/x is not a folder that exists.' && (await s.p.textContent('#status')) === '');
             await s.context.close();
 
             // The setup page
-            s = await open('setup.html', { roots: [], home: 'C:/Users/sven', envRoots: '' }, { pick: 'E:/Code' });
+            s = await open('setup.html', { roots: [], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', envRoots: '' }, { pick: 'E:/Code' });
             p = s.p;
-            check('setup page: the way "on this computer" offers the folders, folded, with the default named', (await p.isVisible('details.folders-setup summary')) && !(await p.isVisible('#setup-folders')) && (await p.$eval('.folder-default', (n) => n.textContent)).includes('C:/Users/sven'));
+            check('setup page: the way "on this computer" offers the folders, folded, with the default named', (await p.isVisible('details.folders-setup summary')) && !(await p.isVisible('#setup-folders')) && (await p.$eval('.folder-default', (n) => n.textContent)).includes('C:/Users/sven/OpenFolk') && (await p.textContent('[data-i18n="foldersSetupHint"]')).includes('C:/Users/sven/OpenFolk'));
             await p.click('details.folders-setup summary');
             await p.click('#setup-folders .folder-add');
             await p.click('#local');
