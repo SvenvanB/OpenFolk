@@ -43,7 +43,24 @@ export default async function ({ check }) {
         check('folders: an empty list removes the line (the default of the backend applies), nothing else', read() === '# my settings\r\nRELAY_URL=https://relay.example.test\r\nMACHINE_NAME=desk\r\n' && backend.profileRoots().length === 0, read());
 
         backend.setProfileEnv('ALLOWED_ROOTS', 'C:/Team #1;D:/x');
-        check('folders: a folder with " #" is quoted so the .env does not cut it short', read().includes('ALLOWED_ROOTS="C:/Team #1;D:/x"') && backend.profileRoots().join('|') === 'C:/Team #1|D:/x', read());
+        check('folders: a folder with " #" is quoted so the .env does not cut it short', read().includes("ALLOWED_ROOTS='C:/Team #1;D:/x'") && backend.profileRoots().join('|') === 'C:/Team #1|D:/x', read());
+
+        // What the backend reads (dotenv, local/src/config.ts) must be exactly what was written
+        const dotenv = createRequire(import.meta.url)('dotenv');
+        const tricky = [
+            String.raw`C:\Team #1\new`, String.raw`C:\Team#1\tab`, String.raw`C:\Team #1\new;D:\OneDrive - TUBIX Computer Systeme\Projekte`,
+            String.raw`C:\My Docs\a b`, String.raw`C:\temp\r\n\t`, String.raw`C:\it's #1`, 'C:/a "b" #c', String.raw`C:\a=b;E:\c`, ' C:/leading space',
+        ];
+        for (const value of tricky) {
+            fs.writeFileSync(envFile, 'RELAY_URL=https://relay.example.test\nMACHINE_NAME=desk\n');
+            backend.setProfileEnv('ALLOWED_ROOTS', value);
+            const parsed = dotenv.parse(fs.readFileSync(envFile));
+            check(`folders: dotenv reads ${JSON.stringify(value)} back unchanged, the other lines stay`, parsed.ALLOWED_ROOTS === value && parsed.MACHINE_NAME === 'desk' && parsed.RELAY_URL === 'https://relay.example.test', parsed);
+            check(`folders: the app reads ${JSON.stringify(value)} back too`, backend.profileRoots().join(';') === value.trim(), backend.profileRoots());
+            backend.setProfileEnv('ALLOWED_ROOTS', 'C:/Plain');
+            check('folders: replacing the quoted line leaves a plain one', read().includes('ALLOWED_ROOTS=C:/Plain\n') && !read().includes("'"));
+        }
+        check('folders: a value with both \' and ` is refused, nothing written', (() => { try { backend.setProfileEnv('ALLOWED_ROOTS', "C:/a' #`b"); return false; } catch { return read().includes('C:/Plain'); } })());
 
         // The restart: the request the backend answers once no bot is working; the app starts it again by itself
         const data = path.join(profile, 'data');

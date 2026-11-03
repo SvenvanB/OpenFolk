@@ -17,7 +17,8 @@ function startApp(profile, config) {
             this.loads = [];
             this.events = {};
             this.hidden = false;
-            this.webContents = { setWindowOpenHandler: () => undefined, on: () => undefined };
+            this.agent = '';
+            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: () => undefined };
             state.win = this;
         }
         once() {}
@@ -98,6 +99,7 @@ export default async function ({ check }) {
         await settle();
         const last = () => app.win.loads[app.win.loads.length - 1];
         check('main: the app shows the web app of the backend', last().url === 'http://127.0.0.1:4711/', app.win.loads);
+        check('main: "on this computer" marks the user agent for the web app', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44 OpenFolkLocal', app.win.agent);
         check('main: no folder in the .env yet: the own folder is created and written, never the whole user folder', fs.readFileSync(path.join(profile, '.env'), 'utf8') === `ALLOWED_ROOTS=${path.join(home, 'OpenFolk')}\n` && fs.statSync(path.join(home, 'OpenFolk')).isDirectory(), fs.existsSync(path.join(profile, '.env')) && fs.readFileSync(path.join(profile, '.env'), 'utf8'));
         menuItem(app, 'Change setup …').click();
         check('main: "Change setup" shows the setup page', last().file === 'setup.html' && last().query.choose === '1', last());
@@ -138,6 +140,7 @@ export default async function ({ check }) {
         await settle();
         menuItem(app, 'Change setup …').click();
         app.win.events.close({ preventDefault: () => undefined });
+        check('main: a display-only window carries no mark', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', app.win.agent);
         check('main: in relay mode the relay comes back', app.win.loads[app.win.loads.length - 1].url === 'https://relay.example.test/', app.win.loads);
     } finally {
         for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
