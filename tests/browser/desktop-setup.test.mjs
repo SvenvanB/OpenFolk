@@ -40,7 +40,7 @@ export default async function ({ check }) {
             await context.addInitScript(`
                 window.__calls = [];
                 window.openfolkDesktop = {
-                    info: async () => ({ mode: ${JSON.stringify(mode)}, language: 'en', version: '0.0.0', roots: [], home: 'C:/Users/sven', texts: { setupHint: 'OpenFolk {version}', invalidAddress: 'Please enter a server URL.', foldersDefault: 'Your user folder ({home}).', foldersAdd: 'Add folder …', foldersRemove: 'Remove' } }),
+                    info: async () => ({ mode: ${JSON.stringify(mode)}, language: 'en', version: '0.0.0', roots: [], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', texts: { setupHint: 'OpenFolk {version}', invalidAddress: 'Please enter a server URL.', foldersDefault: 'Own folder {default}.', foldersDefaultTag: 'default', foldersAdd: 'Add folder …', foldersRemove: 'Remove', foldersLastRemoved: 'Last folder.', foldersWide: '{folder} is wide.', foldersSetupHint: 'Hint {default}' } }),
                     saveAddress: async (url) => { window.__calls.push(url); return ${JSON.stringify(answer)}; },
                     chooseLocal: async () => ({}), joinServer: async () => ({}),
                 };`);
