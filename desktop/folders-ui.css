@@ -5,3 +5,7 @@
 .folder-list button { width: auto; margin: 0; padding: 6px 12px; font-size: 13px; }
 .folder-default { margin: 0 0 8px; font-size: 13px; text-align: left; }
 .folder-add { margin-top: 4px; }
+.folder-standard .folder-tag { color: var(--muted); font-size: 12px; padding-right: 6px; }
+.folder-notes { display: grid; gap: 8px; }
+.folder-notes p { margin: 0 0 4px; font-size: 13px; text-align: left; }
+.folder-notes .note { color: var(--text); }

@@ -18,6 +18,8 @@ const CONFIG = () => path.join(app.getPath('userData'), 'config.json');
 const SETUP = path.join(__dirname, 'setup.html');
 const FOLDERS = path.join(__dirname, 'folders.html');
 const MAC = process.platform === 'darwin';
+/** Where bots work when no folder is chosen: the backend's own default would be the whole user folder, with documents and downloads. */
+const DEFAULT_ROOT = () => path.join(os.homedir(), 'OpenFolk');
 
 /** Texts of the app itself (menus, tray, setup page); the web app from the relay translates itself. */
 const TEXTS = {
@@ -27,7 +29,10 @@ const TEXTS = {
         foldersMenu: 'Allowed folders …',
         foldersTitle: 'Allowed folders',
         foldersIntro: 'Bots only work in these folders and below them. A bot with a folder outside is refused when it is saved.',
-        foldersDefault: 'No folder chosen: bots may work in your user folder ({home}).',
+        foldersDefault: 'No folder chosen: bots work in their own folder {default}, not in your whole user folder.',
+        foldersDefaultTag: 'default',
+        foldersLastRemoved: 'The last folder cannot be removed: without a choice the own folder {default} applies.',
+        foldersWide: '{folder} is very wide: bots could work on all documents, downloads and other files in it. Better choose the folders they need.',
         foldersAdd: 'Add folder …',
         foldersRemove: 'Remove',
         foldersSave: 'Save',
@@ -39,7 +44,7 @@ const TEXTS = {
         foldersNotFolder: '{folder} is not a folder that exists.',
         foldersBadChars: '{folder} cannot be used: a folder name must not contain “;”.',
         foldersSetupSummary: 'Folders the bots may work in (optional)',
-        foldersSetupHint: 'Without a choice the bots may work in your user folder. You can change this later in the menu under “Allowed folders …”.',
+        foldersSetupHint: 'Without a choice the bots get their own folder {default}, not your whole user folder. You can change this later in the menu under “Allowed folders …”.',
         pairAgain: 'Sign this window in again',
         setupRelay: 'I already have an OpenFolk server',
         setupRelayHint: 'Your bots keep running on your machines. This window shows the same bots and chats as your phone and browser.',
@@ -126,7 +131,10 @@ const TEXTS = {
         foldersMenu: 'Freigegebene Ordner …',
         foldersTitle: 'Freigegebene Ordner',
         foldersIntro: 'Bots arbeiten nur in diesen Ordnern und darunter. Ein Bot mit einem Ordner außerhalb wird beim Speichern abgelehnt.',
-        foldersDefault: 'Kein Ordner gewählt: Bots dürfen in deinem Benutzerordner arbeiten ({home}).',
+        foldersDefault: 'Kein Ordner gewählt: Bots arbeiten in ihrem eigenen Ordner {default}, nicht in deinem ganzen Benutzerordner.',
+        foldersDefaultTag: 'Standard',
+        foldersLastRemoved: 'Der letzte Ordner lässt sich nicht entfernen: Ohne Auswahl gilt der eigene Ordner {default}.',
+        foldersWide: '{folder} ist sehr weit gefasst: Bots könnten dort an allen Dokumenten, Downloads und anderen Dateien arbeiten. Besser nur die Ordner wählen, die sie brauchen.',
         foldersAdd: 'Ordner hinzufügen …',
         foldersRemove: 'Entfernen',
         foldersSave: 'Speichern',
@@ -138,7 +146,7 @@ const TEXTS = {
         foldersNotFolder: '{folder} ist kein vorhandener Ordner.',
         foldersBadChars: '{folder} geht nicht: Ein Ordnername darf kein „;“ enthalten.',
         foldersSetupSummary: 'Ordner, in denen Bots arbeiten dürfen (optional)',
-        foldersSetupHint: 'Ohne Auswahl dürfen die Bots in deinem Benutzerordner arbeiten. Das lässt sich später im Menü unter „Freigegebene Ordner …“ ändern.',
+        foldersSetupHint: 'Ohne Auswahl bekommen die Bots einen eigenen Ordner {default}, nicht deinen ganzen Benutzerordner. Das lässt sich später im Menü unter „Freigegebene Ordner …“ ändern.',
         pairAgain: 'Dieses Fenster neu anmelden',
         setupRelay: 'Ich habe schon einen OpenFolk-Server',
         setupRelayHint: 'Deine Bots laufen weiter auf deinen Rechnern. Dieses Fenster zeigt dieselben Bots und Chats wie Handy und Browser.',
@@ -230,6 +238,8 @@ let config = {};
 /** The backend of "on this computer"; null in relay mode. */
 let backend = null;
 let win = null;
+/** The setup page is open on top of a working setup ("Change setup"): closing the window without a choice brings the app back. */
+let choosing = false;
 let tray = null;
 let quitting = false;
 
@@ -283,6 +293,7 @@ function normalizeAddress(input) {
 }
 
 function loadWebApp() {
+    choosing = false;
     if (config.mode === 'local') void startLocal();
     else if (config.mode === 'relay' && config.url) win.loadURL(config.url);
     else win.loadFile(SETUP);
@@ -296,6 +307,8 @@ async function startLocal() {
         saveConfig();
     }
     if (!backend) {
+        // Profiles from before the default folder, or a setup page that sent nothing
+        if (!profileRoots().length) writeRoots([]);
         backend = new Backend(config.localPort);
         backend.useTask = Boolean(config.task);
         backend.start();
@@ -355,6 +368,7 @@ function createWindow() {
         if (quitting) return;
         e.preventDefault();
         win.hide();
+        if (choosing) loadWebApp();
     });
     win.on('closed', () => { win = null; });
 
@@ -441,8 +455,19 @@ function checkRoots(list) {
     return { roots };
 }
 
+/**
+ * The folders for ALLOWED_ROOTS, never none: bots without a choice work in their own folder (created here), where the
+ * backend's own default would be the whole user folder.
+ */
+function writeRoots(roots) {
+    const list = roots.length ? roots : [DEFAULT_ROOT()];
+    if (!roots.length) fs.mkdirSync(list[0], { recursive: true });
+    setProfileEnv('ALLOWED_ROOTS', list.join(';'));
+}
+
 function changeAddress() {
     show();
+    choosing = Boolean(config.mode);
     win.loadFile(SETUP, { query: { url: config.url || '', choose: '1' } });
 }
 
@@ -650,7 +675,9 @@ if (!app.requestSingleInstanceLock()) {
         if (Array.isArray(folders)) {
             const checked = checkRoots(folders);
             if (checked.error) return { error: checked.error };
-            setProfileEnv('ALLOWED_ROOTS', checked.roots.join(';'));
+            writeRoots(checked.roots);
+            // "Change setup" with the backend running already: it reads the folders by a restart
+            if (backend) void backend.restartWhenIdle();
         }
         config.mode = 'local';
         saveConfig();
@@ -677,7 +704,7 @@ if (!app.requestSingleInstanceLock()) {
         loadWebApp();
         return { machine: r.machine };
     });
-    ipcMain.handle('folders-info', (e) => (!fromSetup(e) ? {} : { roots: profileRoots(), home: os.homedir(), env: process.env.ALLOWED_ROOTS || '', language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('folders-info', (e) => (!fromSetup(e) ? {} : { roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), env: process.env.ALLOWED_ROOTS || '', language: language(), texts: TEXTS[language()] }));
     ipcMain.handle('folders-pick', async (e) => {
         if (!fromSetup(e)) return '';
         const owner = BrowserWindow.fromWebContents(e.sender) || undefined;
@@ -689,10 +716,10 @@ if (!app.requestSingleInstanceLock()) {
         if (!fromSetup(e)) return { error: 'not allowed' };
         const checked = checkRoots(list);
         if (checked.error) return { error: checked.error };
-        setProfileEnv('ALLOWED_ROOTS', checked.roots.join(';'));
+        writeRoots(checked.roots);
         return { state: config.mode === 'local' && backend ? await backend.restartWhenIdle() : 'saved' };
     });
-    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', roots: profileRoots(), home: os.homedir(), envRoots: process.env.ALLOWED_ROOTS || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), envRoots: process.env.ALLOWED_ROOTS || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
 
     // A click on the Dock icon brings the hidden window back (macOS only)
     app.on('activate', show);
