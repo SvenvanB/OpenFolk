@@ -11,7 +11,11 @@ input.value = params.get('url') || '';
 
 const fill = (text, values) => text.replace(/\{(\w+)\}/g, (m, k) => (k in values ? values[k] : m));
 
+/** The folders list of "on this computer", once the texts are there. */
+let folders = null;
+
 window.openfolkDesktop.info().then((i) => {
+    folders = window.mountFolders(document.getElementById('setup-folders'), { roots: i.roots || [], home: i.home || '', env: i.envRoots || '', texts: i.texts });
     document.documentElement.lang = i.language;
     for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = i.texts[el.dataset.i18n] ?? el.textContent;
     document.getElementById('info').textContent = fill(i.texts.setupHint, { version: i.version });
@@ -28,7 +32,10 @@ window.openfolkDesktop.info().then((i) => {
     }
 });
 
-document.getElementById('local').addEventListener('click', () => window.openfolkDesktop.chooseLocal());
+document.getElementById('local').addEventListener('click', async () => {
+    const r = await window.openfolkDesktop.chooseLocal(folders ? folders.get() : undefined);
+    if (r && r.error && folders) folders.error(r.error);
+});
 
 const joinError = document.getElementById('join-error');
 document.getElementById('join-form').addEventListener('submit', async (e) => {
