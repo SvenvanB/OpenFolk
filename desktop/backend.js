@@ -25,20 +25,32 @@ function profileEnv() {
     try { text = fs.readFileSync(envFile(), 'utf8'); } catch { return values; }
     for (const line of text.split(/\r?\n/)) {
         const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
-        if (m) values[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+        if (m) values[m[1]] = m[2].replace(/^(['"`])(.*)\1$/, '$2');
     }
     return values;
 }
 
 /**
+ * The value as dotenv reads it back unchanged. It cuts an unquoted value at any "#", drops outer spaces and turns "\n"
+ * into a line break inside double quotes, which would ruin C:\Team #1\new; inside single quotes it changes nothing
+ * (backticks when the value has a single quote itself).
+ */
+function envValue(value) {
+    if (!/#|^\s|\s$|^['"`]|['"`]$/.test(value)) return value;
+    if (!value.includes("'")) return `'${value}'`;
+    if (!value.includes('`')) return `\`${value}\``;
+    throw new Error(`A value with both ' and \` cannot be stored in a .env: ${value}`);
+}
+
+/**
  * Writes KEY=value into the profile's .env (replaces the line, appends otherwise, like local/tools/env.mjs); an empty
- * value removes the line, so the backend's default applies again. A value dotenv would cut short (" #") is quoted.
+ * value removes the line, so the backend's default applies again.
  */
 function setProfileEnv(key, value) {
     let text = '';
     try { text = fs.readFileSync(envFile(), 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     const line = new RegExp('^' + key + '=.*$', 'm');
-    const shown = /(^|\s)#|^\s|\s$/.test(value) ? '"' + value + '"' : value;
+    const shown = envValue(value);
     if (!value) text = text.replace(new RegExp('^' + key + '=.*(\r?\n|$)', 'm'), '');
     else if (line.test(text)) text = text.replace(line, () => key + '=' + shown);
     else text += (text && !text.endsWith('\n') ? '\n' : '') + key + '=' + shown + '\n';

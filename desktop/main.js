@@ -264,6 +264,8 @@ let backend = null;
 let win = null;
 /** The setup page is open on top of a working setup ("Change setup"): closing the window without a choice brings the app back. */
 let choosing = false;
+/** The window's user agent as Electron made it, without our mark. */
+let baseAgent = '';
 let tray = null;
 let quitting = false;
 
@@ -318,6 +320,8 @@ function normalizeAddress(input) {
 
 function loadWebApp() {
     choosing = false;
+    // The web app tells "on this computer" (it has the menu "Allowed folders …") from a display-only window by this mark
+    win.webContents.setUserAgent(config.mode === 'local' ? `${baseAgent} OpenFolkLocal` : baseAgent);
     if (config.mode === 'local') void startLocal();
     else if (config.mode === 'relay' && config.url) win.loadURL(config.url);
     else win.loadFile(SETUP);
@@ -384,6 +388,7 @@ function createWindow() {
         },
     });
 
+    baseAgent = win.webContents.userAgent;
     win.once('ready-to-show', () => win.show());
     win.on('resize', rememberBounds);
     win.on('move', rememberBounds);
